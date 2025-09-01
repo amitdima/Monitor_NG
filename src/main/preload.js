@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   disconnectDevice: (deviceId) => ipcRenderer.invoke('disconnect-device', deviceId),
   readDeviceData: (deviceId) => ipcRenderer.invoke('read-device-data', deviceId),
   getDevices: () => ipcRenderer.invoke('get-devices'),
+  pauseDevice: (deviceId) => ipcRenderer.invoke('pause-device', deviceId),
+  resumeDevice: (deviceId) => ipcRenderer.invoke('resume-device', deviceId),
   
   // Профили
   saveProfile: (profile) => ipcRenderer.invoke('save-profile', profile),

@@ -48,4 +48,5 @@ export interface Parameter {
   scale: number;
   unit?: string;
   byteOrder?: string;
+  registerCount?: number;
 }

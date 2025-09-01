@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Space, Tag, Modal, Form, Input, Select, InputNumber, message, Divider, Spin } from 'antd';
+import { Table, Button, Space, Tag, Modal, Form, Input, Select, InputNumber, message, Divider, Spin, Tabs } from 'antd';
 import { 
   PlusOutlined, 
   DeleteOutlined, 
@@ -7,11 +7,13 @@ import {
   PlayCircleOutlined, 
   PauseCircleOutlined,
   ReloadOutlined,
-  FileOutlined 
+  FileOutlined,
+  SettingOutlined
 } from '@ant-design/icons';
-import { Device, DeviceProfile } from '../../../shared/types';
+import { Device, DeviceProfile, Parameter } from '../../../shared/types';
 
 const { Option } = Select;
+const { TabPane } = Tabs;
 
 interface DeviceListProps {
   onDevicesChange: (devices: Device[]) => void;
@@ -25,6 +27,17 @@ const DeviceList: React.FC<DeviceListProps> = ({ onDevicesChange }) => {
   const [connectionType, setConnectionType] = useState<'modbus-rtu' | 'modbus-tcp' | 'custom' | 'profile'>('modbus-rtu');
   const [ports, setPorts] = useState<any[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<string>('');
+  const [parameters, setParameters] = useState<Parameter[]>([
+    // Параметры по умолчанию для адреса 17000
+    {
+      key: '1',
+      name: 'Значение 17000',
+      address: 17000,
+      type: 'uint32',  // 2 регистра = 32 бита
+      functionCode: 3,
+      scale: 1
+    }
+  ]);
   const [form] = Form.useForm();
 
   // Загружаем устройства и профили при монтировании
@@ -99,6 +112,63 @@ const DeviceList: React.FC<DeviceListProps> = ({ onDevicesChange }) => {
     setIsModalVisible(true);
     form.resetFields();
     setConnectionType('modbus-rtu');
+    // Сбрасываем параметры на значения по умолчанию для адреса 17000
+    setParameters([
+      {
+        key: '1',
+        name: 'Значение 17000',
+        address: 17000,
+        type: 'uint32',
+        functionCode: 3,
+        scale: 1
+      }
+    ]);
+  };
+
+  const addParameter = () => {
+    const newParam: Parameter = {
+      key: Date.now().toString(),
+      name: '',
+      address: 0,
+      type: 'uint16',
+      functionCode: 3,
+      scale: 1
+    };
+    setParameters([...parameters, newParam]);
+  };
+
+  const removeParameter = (key: string) => {
+    if (parameters.length > 1) {
+      setParameters(parameters.filter(p => p.key !== key));
+    } else {
+      message.warning('Должен остаться хотя бы один параметр');
+    }
+  };
+
+  const updateParameter = (key: string, field: string, value: any) => {
+    setParameters(parameters.map(p => 
+      p.key === key ? { ...p, [field]: value } : p
+    ));
+  };
+
+  const handleProfileSelect = async (profileId: string) => {
+    setSelectedProfile(profileId);
+    if (profileId) {
+      const profile = profiles.find(p => p.id === profileId);
+      if (profile) {
+        // Загружаем параметры из профиля
+        setParameters(profile.parameters.map((p, index) => ({
+          key: index.toString(),
+          name: p.name,
+          address: p.address,
+          type: p.type,
+          functionCode: p.functionCode || 3,
+          scale: p.scale || 1,
+          unit: p.unit,
+          byteOrder: p.byteOrder
+        })));
+      }
+    }
   };
 
   const handleModalOk = async () => {
@@ -106,18 +176,27 @@ const DeviceList: React.FC<DeviceListProps> = ({ onDevicesChange }) => {
       const values = await form.validateFields();
       setLoading(true);
 
+      // Проверяем параметры
+      const invalidParams = parameters.filter(p => !p.name);
+      if (invalidParams.length > 0) {
+        message.warning('Заполните названия всех параметров');
+        setLoading(false);
+        return;
+      }
+
       let profile: DeviceProfile;
 
       if (connectionType === 'profile' && selectedProfile) {
         // Загружаем выбранный профиль
-        const profileResult = await window.electronAPI.loadProfile(selectedProfile);
-        if (!profileResult.success || !profileResult.profile) {
-          throw new Error('Не удалось загрузить профиль');
+        const selectedProf = profiles.find(p => p.id === selectedProfile);
+        if (!selectedProf) {
+          throw new Error('Профиль не найден');
         }
-        profile = profileResult.profile;
-        // Обновляем имя устройства
-        profile.name = values.deviceName || profile.name;
-        profile.id = `device_${Date.now()}`;
+        profile = {
+          ...selectedProf,
+          id: `device_${Date.now()}`,
+          name: values.deviceName || selectedProf.name,
+        };
       } else {
         // Создаём новый профиль на основе параметров
         profile = {
@@ -132,23 +211,15 @@ const DeviceList: React.FC<DeviceListProps> = ({ onDevicesChange }) => {
             unitId: values.unitId || 1,
             timeout: values.timeout || 1000
           },
-          parameters: [
-            // Базовые параметры для тестирования
-            {
-              name: 'Register 0',
-              address: 0,
-              type: 'uint16',
-              functionCode: 3,
-              scale: 1
-            },
-            {
-              name: 'Register 1',
-              address: 1,
-              type: 'uint16',
-              functionCode: 3,
-              scale: 1
-            }
-          ],
+          parameters: parameters.map(p => ({
+            name: p.name,
+            address: p.address,
+            type: p.type as any,
+            functionCode: p.functionCode as 3 | 4,
+            scale: p.scale || 1,
+            unit: p.unit,
+            byteOrder: p.byteOrder as any
+          })),
           polling: {
             interval: values.pollInterval || 1000,
             enabled: values.autoStart !== false
@@ -182,14 +253,19 @@ const DeviceList: React.FC<DeviceListProps> = ({ onDevicesChange }) => {
       okType: 'danger',
       onOk: async () => {
         try {
+          setLoading(true);
           const result = await window.electronAPI.disconnectDevice(deviceId);
           if (result.success) {
             message.success('Устройство удалено');
+            // Обновляем локальный список устройств
+            setDevices(prev => prev.filter(d => d.id !== deviceId));
           } else {
             message.error(`Ошибка удаления: ${result.error}`);
           }
         } catch (error: any) {
           message.error(`Ошибка: ${error.message}`);
+        } finally {
+          setLoading(false);
         }
       }
     });
@@ -208,6 +284,125 @@ const DeviceList: React.FC<DeviceListProps> = ({ onDevicesChange }) => {
       message.error(`Ошибка: ${error.message}`);
     }
   };
+
+  const parameterColumns = [
+    {
+      title: 'Название',
+      dataIndex: 'name',
+      render: (text: string, record: Parameter) => (
+        <Input 
+          value={text} 
+          onChange={(e) => updateParameter(record.key, 'name', e.target.value)}
+          placeholder="Название параметра"
+        />
+      ),
+    },
+    {
+      title: 'Адрес',
+      dataIndex: 'address',
+      width: 80,
+      render: (text: number, record: Parameter) => (
+        <InputNumber 
+          value={text} 
+          onChange={(value) => updateParameter(record.key, 'address', value)}
+          min={0}
+          max={65535}
+          style={{ width: '100%' }}
+        />
+      ),
+    },
+    {
+      title: 'Кол-во',
+      dataIndex: 'registerCount',
+      width: 70,
+      render: (text: number, record: Parameter) => (
+        <InputNumber 
+          value={text || (record.type === 'uint32' || record.type === 'int32' || record.type === 'float' ? 2 : 1)} 
+          onChange={(value) => updateParameter(record.key, 'registerCount', value)}
+          min={1}
+          max={125}
+          style={{ width: '100%' }}
+        />
+      ),
+    },
+    {
+      title: 'Тип',
+      dataIndex: 'type',
+      width: 100,
+      render: (text: string, record: Parameter) => (
+        <Select 
+          value={text} 
+          onChange={(value) => updateParameter(record.key, 'type', value)}
+          style={{ width: '100%' }}
+        >
+          <Option value="uint16">uint16</Option>
+          <Option value="int16">int16</Option>
+          <Option value="uint32">uint32</Option>
+          <Option value="int32">int32</Option>
+          <Option value="float">float</Option>
+        </Select>
+      ),
+    },
+    {
+      title: 'Функция',
+      dataIndex: 'functionCode',
+      width: 70,
+      render: (text: number, record: Parameter) => (
+        <Select 
+          value={text} 
+          onChange={(value) => updateParameter(record.key, 'functionCode', value)}
+          style={{ width: '100%' }}
+        >
+          <Option value={3}>3</Option>
+          <Option value={4}>4</Option>
+        </Select>
+      ),
+    },
+    {
+      title: 'Порядок байт',
+      dataIndex: 'byteOrder',
+      width: 100,
+      render: (text: string, record: Parameter) => (
+        <Select 
+          value={text || 'AB CD'} 
+          onChange={(value) => updateParameter(record.key, 'byteOrder', value)}
+          style={{ width: '100%' }}
+        >
+          <Option value="AB CD">AB CD</Option>
+          <Option value="BA DC">BA DC</Option>
+          <Option value="CD AB">CD AB</Option>
+          <Option value="DC BA">DC BA</Option>
+        </Select>
+      ),
+    },
+    {
+      title: 'Масштаб',
+      dataIndex: 'scale',
+      width: 80,
+      render: (text: number, record: Parameter) => (
+        <InputNumber 
+          value={text} 
+          onChange={(value) => updateParameter(record.key, 'scale', value || 1)}
+          min={0.0001}
+          max={10000}
+          step={0.1}
+          style={{ width: '100%' }}
+        />
+      ),
+    },
+    {
+      title: '',
+      width: 40,
+      render: (_: any, record: Parameter) => (
+        <Button 
+          icon={<DeleteOutlined />} 
+          danger 
+          size="small"
+          onClick={() => removeParameter(record.key)}
+        />
+      ),
+    },
+  ];
 
   const columns = [
     {
@@ -295,140 +490,162 @@ const DeviceList: React.FC<DeviceListProps> = ({ onDevicesChange }) => {
         open={isModalVisible}
         onOk={handleModalOk}
         onCancel={() => setIsModalVisible(false)}
-        width={600}
+        width={800}
         confirmLoading={loading}
         okText="Добавить"
         cancelText="Отмена"
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{
-            baudRate: 9600,
-            unitId: 1,
-            timeout: 1000,
-            tcpPort: 502,
-            pollInterval: 1000,
-            autoStart: true
-          }}
-        >
-          <Form.Item
-            label="Название устройства"
-            name="deviceName"
-            rules={[{ required: true, message: 'Введите название устройства' }]}
-          >
-            <Input placeholder="Например: Счётчик электроэнергии" />
-          </Form.Item>
-
-          <Form.Item label="Способ настройки">
-            <Select value={connectionType} onChange={setConnectionType}>
-              <Option value="modbus-rtu">Modbus RTU (Serial)</Option>
-              <Option value="modbus-tcp">Modbus TCP</Option>
-              <Option value="profile">Использовать готовый профиль</Option>
-              <Option value="custom" disabled>Пользовательский протокол</Option>
-            </Select>
-          </Form.Item>
-
-          {connectionType === 'profile' ? (
-            <Form.Item
-              label="Выберите профиль"
-              rules={[{ required: true, message: 'Выберите профиль' }]}
+        <Tabs defaultActiveKey="connection">
+          <TabPane tab="Подключение" key="connection">
+            <Form
+              form={form}
+              layout="vertical"
+              initialValues={{
+                baudRate: 9600,
+                unitId: 1,
+                timeout: 1000,
+                tcpPort: 502,
+                pollInterval: 1000,
+                autoStart: true
+              }}
             >
-              <Select 
-                placeholder="Выберите профиль устройства"
-                value={selectedProfile}
-                onChange={setSelectedProfile}
+              <Form.Item
+                label="Название устройства"
+                name="deviceName"
+                rules={[{ required: true, message: 'Введите название устройства' }]}
               >
-                {profiles.map(profile => (
-                  <Option key={profile.id} value={profile.id}>
-                    <FileOutlined /> {profile.name}
-                  </Option>
-                ))}
-              </Select>
-              {profiles.length === 0 && (
-                <div style={{ marginTop: 8, color: '#999' }}>
-                  Нет сохранённых профилей. Создайте профиль во вкладке "Профили".
-                </div>
-              )}
-            </Form.Item>
-          ) : (
-            <>
-              {connectionType === 'modbus-rtu' && (
-                <>
-                  <Form.Item
-                    label="COM порт"
-                    name="port"
-                    rules={[{ required: true, message: 'Выберите COM порт' }]}
+                <Input placeholder="Например: Счётчик электроэнергии" />
+              </Form.Item>
+
+              <Form.Item label="Способ настройки">
+                <Select value={connectionType} onChange={setConnectionType}>
+                  <Option value="modbus-rtu">Modbus RTU (Serial)</Option>
+                  <Option value="modbus-tcp">Modbus TCP</Option>
+                  <Option value="profile">Использовать готовый профиль</Option>
+                </Select>
+              </Form.Item>
+
+              {connectionType === 'profile' ? (
+                <Form.Item label="Выберите профиль">
+                  <Select 
+                    placeholder="Выберите профиль устройства"
+                    value={selectedProfile}
+                    onChange={handleProfileSelect}
                   >
-                    <Select
-                      placeholder="Выберите порт"
-                      dropdownRender={menu => (
-                        <>
-                          <Space style={{ padding: '4px 8px' }}>
-                            <Button size="small" onClick={loadSerialPorts}>
-                              <ReloadOutlined /> Обновить
-                            </Button>
-                          </Space>
-                          <Divider style={{ margin: '4px 0' }} />
-                          {menu}
-                        </>
-                      )}
-                    >
-                      {ports.map(port => (
-                        <Option key={port.path} value={port.path}>
-                          {port.path} {port.manufacturer && `(${port.manufacturer})`}
-                        </Option>
-                      ))}
-                    </Select>
+                    {profiles.map(profile => (
+                      <Option key={profile.id} value={profile.id}>
+                        <FileOutlined /> {profile.name}
+                      </Option>
+                    ))}
+                  </Select>
+                  {profiles.length === 0 && (
+                    <div style={{ marginTop: 8, color: '#999' }}>
+                      Нет сохранённых профилей. Создайте профиль во вкладке "Профили".
+                    </div>
+                  )}
+                </Form.Item>
+              ) : (
+                <>
+                  {connectionType === 'modbus-rtu' && (
+                    <>
+                      <Form.Item
+                        label="COM порт"
+                        name="port"
+                        rules={[{ required: true, message: 'Выберите COM порт' }]}
+                      >
+                        <Select
+                          placeholder="Выберите порт"
+                          dropdownRender={menu => (
+                            <>
+                              <Space style={{ padding: '4px 8px' }}>
+                                <Button size="small" onClick={loadSerialPorts}>
+                                  <ReloadOutlined /> Обновить
+                                </Button>
+                              </Space>
+                              <Divider style={{ margin: '4px 0' }} />
+                              {menu}
+                            </>
+                          )}
+                        >
+                          {ports.map(port => (
+                            <Option key={port.path} value={port.path}>
+                              {port.path} {port.manufacturer && `(${port.manufacturer})`}
+                            </Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
+
+                      <Form.Item label="Скорость (бод)" name="baudRate">
+                        <Select>
+                          <Option value={2400}>2400</Option>
+                          <Option value={4800}>4800</Option>
+                          <Option value={9600}>9600</Option>
+                          <Option value={19200}>19200</Option>
+                          <Option value={38400}>38400</Option>
+                          <Option value={57600}>57600</Option>
+                          <Option value={115200}>115200</Option>
+                        </Select>
+                      </Form.Item>
+                    </>
+                  )}
+
+                  {connectionType === 'modbus-tcp' && (
+                    <>
+                      <Form.Item
+                        label="IP адрес"
+                        name="host"
+                        rules={[
+                          { required: true, message: 'Введите IP адрес' },
+                          { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: 'Неверный формат IP адреса' }
+                        ]}
+                      >
+                        <Input placeholder="192.168.1.100" />
+                      </Form.Item>
+
+                      <Form.Item label="TCP порт" name="tcpPort">
+                        <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                      </Form.Item>
+                    </>
+                  )}
+
+                  <Form.Item label="Unit ID (Slave ID)" name="unitId">
+                    <InputNumber min={0} max={255} style={{ width: '100%' }} />
                   </Form.Item>
 
-                  <Form.Item label="Скорость (бод)" name="baudRate">
-                    <Select>
-                      <Option value={2400}>2400</Option>
-                      <Option value={4800}>4800</Option>
-                      <Option value={9600}>9600</Option>
-                      <Option value={19200}>19200</Option>
-                      <Option value={38400}>38400</Option>
-                      <Option value={57600}>57600</Option>
-                      <Option value={115200}>115200</Option>
-                    </Select>
+                  <Form.Item label="Таймаут (мс)" name="timeout">
+                    <InputNumber min={100} max={10000} style={{ width: '100%' }} />
+                  </Form.Item>
+
+                  <Form.Item label="Интервал опроса (мс)" name="pollInterval">
+                    <InputNumber min={100} max={60000} style={{ width: '100%' }} />
                   </Form.Item>
                 </>
               )}
-
-              {connectionType === 'modbus-tcp' && (
-                <>
-                  <Form.Item
-                    label="IP адрес"
-                    name="host"
-                    rules={[
-                      { required: true, message: 'Введите IP адрес' },
-                      { pattern: /^(\d{1,3}\.){3}\d{1,3}$/, message: 'Неверный формат IP адреса' }
-                    ]}
-                  >
-                    <Input placeholder="192.168.1.100" />
-                  </Form.Item>
-
-                  <Form.Item label="TCP порт" name="tcpPort">
-                    <InputNumber min={1} max={65535} style={{ width: '100%' }} />
-                  </Form.Item>
-                </>
-              )}
-
-              <Form.Item label="Unit ID (Slave ID)" name="unitId">
-                <InputNumber min={0} max={255} style={{ width: '100%' }} />
-              </Form.Item>
-
-              <Form.Item label="Таймаут (мс)" name="timeout">
-                <InputNumber min={100} max={10000} style={{ width: '100%' }} />
-              </Form.Item>
-
-              <Form.Item label="Интервал опроса (мс)" name="pollInterval">
-                <InputNumber min={100} max={60000} style={{ width: '100%' }} />
-              </Form.Item>
-            </>
-          )}
-        </Form>
+            </Form>
+          </TabPane>
+          
+          <TabPane tab={<><SettingOutlined /> Параметры</>} key="parameters" disabled={connectionType === 'profile'}>
+            <div>
+              <p style={{ marginBottom: 16 }}>
+                Настройте параметры (регистры) для чтения с устройства:
+              </p>
+              <Button 
+                type="dashed" 
+                onClick={addParameter} 
+                icon={<PlusOutlined />}
+                style={{ marginBottom: 16 }}
+              >
+                Добавить параметр
+              </Button>
+              <Table 
+                columns={parameterColumns} 
+                dataSource={parameters} 
+                pagination={false}
+                size="small"
+              />
+            </div>
+          </TabPane>
+        </Tabs>
       </Modal>
     </div>
   );

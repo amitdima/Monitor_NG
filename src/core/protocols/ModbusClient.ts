@@ -23,7 +23,6 @@ export class ModbusClient extends EventEmitter {
   async connect(): Promise<void> {
     try {
       if (this.profile.type === 'modbus-rtu') {
-        // Подключение через COM-порт
         await this.client.connectRTUBuffered(
           this.profile.connection.port!,
           {
@@ -34,7 +33,6 @@ export class ModbusClient extends EventEmitter {
           }
         );
       } else if (this.profile.type === 'modbus-tcp') {
-        // Подключение через TCP
         await this.client.connectTCP(
           this.profile.connection.host!,
           {
@@ -49,7 +47,6 @@ export class ModbusClient extends EventEmitter {
       this.isConnected = true;
       this.emit('connected');
       
-      // Запускаем опрос, если включен
       if (this.profile.polling?.enabled) {
         this.startPolling();
       }
@@ -62,9 +59,12 @@ export class ModbusClient extends EventEmitter {
   async disconnect(): Promise<void> {
     this.stopPolling();
     if (this.isConnected && this.client) {
-      this.client.close(() => {
-        this.isConnected = false;
-        this.emit('disconnected');
+      return new Promise((resolve) => {
+        this.client.close(() => {
+          this.isConnected = false;
+          this.emit('disconnected');
+          resolve();
+        });
       });
     }
   }
@@ -90,6 +90,15 @@ export class ModbusClient extends EventEmitter {
       clearInterval(this.pollInterval);
       this.pollInterval = null;
     }
+  }
+
+  // Публичные методы для управления опросом
+  public startPolling(): void {
+    this.startPolling();
+  }
+
+  public stopPolling(): void {
+    this.stopPolling();
   }
 
   async readAllParameters(): Promise<Map<string, any>> {
@@ -119,15 +128,14 @@ export class ModbusClient extends EventEmitter {
   private async readParameter(param: any): Promise<any> {
     let rawValue: number | number[];
     
+    // Определяем количество регистров для чтения
+    const count = param.registerCount || this.getRegisterCount(param.type);
+    
     // Читаем данные в зависимости от функции
     if (param.functionCode === 3) {
-      // Holding Registers
-      const count = this.getRegisterCount(param.type);
       const result = await this.client.readHoldingRegisters(param.address, count);
       rawValue = result.data;
     } else if (param.functionCode === 4) {
-      // Input Registers
-      const count = this.getRegisterCount(param.type);
       const result = await this.client.readInputRegisters(param.address, count);
       rawValue = result.data;
     } else {
@@ -188,10 +196,39 @@ export class ModbusClient extends EventEmitter {
   }
 
   private toUint32(registers: number[], byteOrder?: string): number {
-    if (byteOrder === 'LE' || byteOrder === 'LE_SWAP') {
-      return registers[1] * 65536 + registers[0];
+    if (registers.length < 2) return registers[0] || 0;
+    
+    // AB CD - Big Endian (стандартный Modbus)
+    // BA DC - Little Endian 
+    // CD AB - Big Endian с перестановкой слов
+    // DC BA - Little Endian с перестановкой слов
+    
+    switch (byteOrder) {
+      case 'BE':     // AB CD - стандартный порядок
+      case 'AB CD':
+        return (registers[0] << 16) | registers[1];
+        
+      case 'LE':     // BA DC - обратный порядок байт в словах
+      case 'BA DC':
+        // Меняем байты в каждом слове
+        const r0_swapped = ((registers[0] & 0xFF) << 8) | ((registers[0] >> 8) & 0xFF);
+        const r1_swapped = ((registers[1] & 0xFF) << 8) | ((registers[1] >> 8) & 0xFF);
+        return (r0_swapped << 16) | r1_swapped;
+        
+      case 'BE_SWAP': // CD AB - меняем слова местами
+      case 'CD AB':
+        return (registers[1] << 16) | registers[0];
+        
+      case 'LE_SWAP': // DC BA - меняем слова и байты
+      case 'DC BA':
+        // Меняем слова местами и байты в каждом слове
+        const r0_swap = ((registers[0] & 0xFF) << 8) | ((registers[0] >> 8) & 0xFF);
+        const r1_swap = ((registers[1] & 0xFF) << 8) | ((registers[1] >> 8) & 0xFF);
+        return (r1_swap << 16) | r0_swap;
+        
+      default:
+        return (registers[0] << 16) | registers[1];
     }
-    return registers[0] * 65536 + registers[1];
   }
 
   private toInt32(registers: number[], byteOrder?: string): number {
@@ -200,18 +237,59 @@ export class ModbusClient extends EventEmitter {
   }
 
   private toFloat32(registers: number[], byteOrder?: string): number {
+    if (registers.length < 2) return 0;
+    
     const buffer = new ArrayBuffer(4);
     const view = new DataView(buffer);
+    const bytes = new Uint8Array(buffer);
     
-    if (byteOrder === 'LE' || byteOrder === 'LE_SWAP') {
-      view.setUint16(0, registers[1], false);
-      view.setUint16(2, registers[0], false);
-    } else {
-      view.setUint16(0, registers[0], false);
-      view.setUint16(2, registers[1], false);
+    // Получаем байты из регистров
+    const b0 = (registers[0] >> 8) & 0xFF;  // Старший байт первого регистра
+    const b1 = registers[0] & 0xFF;          // Младший байт первого регистра
+    const b2 = (registers[1] >> 8) & 0xFF;  // Старший байт второго регистра
+    const b3 = registers[1] & 0xFF;          // Младший байт второго регистра
+    
+    // Раскладываем байты в зависимости от порядка
+    switch (byteOrder) {
+      case 'BE':     // AB CD - IEEE 754 Big Endian
+      case 'AB CD':
+        bytes[0] = b0;
+        bytes[1] = b1;
+        bytes[2] = b2;
+        bytes[3] = b3;
+        return view.getFloat32(0, false);
+        
+      case 'LE':     // BA DC - байты переставлены в словах
+      case 'BA DC':
+        bytes[0] = b1;
+        bytes[1] = b0;
+        bytes[2] = b3;
+        bytes[3] = b2;
+        return view.getFloat32(0, false);
+        
+      case 'BE_SWAP': // CD AB - слова переставлены
+      case 'CD AB':
+        bytes[0] = b2;
+        bytes[1] = b3;
+        bytes[2] = b0;
+        bytes[3] = b1;
+        return view.getFloat32(0, false);
+        
+      case 'LE_SWAP': // DC BA - полная перестановка
+      case 'DC BA':
+        bytes[0] = b3;
+        bytes[1] = b2;
+        bytes[2] = b1;
+        bytes[3] = b0;
+        return view.getFloat32(0, false);
+        
+      default:
+        bytes[0] = b0;
+        bytes[1] = b1;
+        bytes[2] = b2;
+        bytes[3] = b3;
+        return view.getFloat32(0, false);
     }
-    
-    return view.getFloat32(0, byteOrder?.startsWith('LE'));
   }
 
   isActive(): boolean {

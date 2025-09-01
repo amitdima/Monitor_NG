@@ -153,6 +153,30 @@ export class DeviceManager extends EventEmitter {
     return data.get(parameterName);
   }
 
+  async pauseDevice(deviceId: string): Promise<void> {
+    const modbusClient = this.activeConnections.get(deviceId);
+    const deviceStatus = this.deviceStatuses.get(deviceId);
+    
+    if (modbusClient && deviceStatus) {
+      modbusClient.stopPolling();
+      deviceStatus.status = 'disconnected';
+      deviceStatus.lastUpdate = new Date();
+      this.emit('device-status-changed', deviceStatus);
+    }
+  }
+
+  async resumeDevice(deviceId: string): Promise<void> {
+    const modbusClient = this.activeConnections.get(deviceId);
+    const deviceStatus = this.deviceStatuses.get(deviceId);
+    
+    if (modbusClient && deviceStatus) {
+      modbusClient.startPolling();
+      deviceStatus.status = 'connected';
+      deviceStatus.lastUpdate = new Date();
+      this.emit('device-status-changed', deviceStatus);
+    }
+  }
+
   getDevices(): Device[] {
     return Array.from(this.deviceStatuses.values());
   }
