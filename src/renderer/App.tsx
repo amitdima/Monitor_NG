@@ -10,13 +10,13 @@ import {
 // Импортируем компоненты и типы
 import { DeviceList, MonitorPanel, ProfileEditor, ArchiveSettings } from './components';
 import { Device } from '../shared/types';
-import './types/electron';
+// Убираем импорт './types/electron' - он не нужен
 
 const { Header, Sider, Content } = Layout;
 
 const App: React.FC = () => {
   const [selectedMenu, setSelectedMenu] = useState('monitor');
-  const [devices, setDevices] = useState<Device[]>([]); // Указываем тип явно
+  const [devices, setDevices] = useState<Device[]>([]);
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {

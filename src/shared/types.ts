@@ -46,4 +46,6 @@ export interface Parameter {
   type: string;
   functionCode: number;
   scale: number;
+  unit?: string;
+  byteOrder?: string;
 }

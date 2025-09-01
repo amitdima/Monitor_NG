@@ -21,6 +21,8 @@ module.exports = [
       alias: {
         '@': path.resolve(__dirname, 'src'),
         '@core': path.resolve(__dirname, 'src/core'),
+        '@devices': path.resolve(__dirname, 'src/devices'),
+        '@main': path.resolve(__dirname, 'src/main'),
         '@shared': path.resolve(__dirname, 'src/shared')
       }
     },
@@ -31,6 +33,28 @@ module.exports = [
     externals: {
       serialport: 'commonjs2 serialport',
       'modbus-serial': 'commonjs2 modbus-serial'
+    }
+  },
+  // Preload script
+  {
+    mode: 'development',
+    entry: './src/main/preload.js',
+    target: 'electron-preload',
+    module: {
+      rules: [
+        {
+          test: /\.ts$/,
+          use: 'ts-loader',
+          exclude: /node_modules/
+        }
+      ]
+    },
+    resolve: {
+      extensions: ['.ts', '.js']
+    },
+    output: {
+      path: path.resolve(__dirname, 'dist'),
+      filename: 'preload.js'
     }
   },
   // Renderer process
@@ -53,9 +77,10 @@ module.exports = [
       ]
     },
     resolve: {
-      extensions: ['.tsx', '.ts', '.js'],
+      extensions: ['.tsx', '.ts', '.js', '.d.ts'],
       alias: {
         '@': path.resolve(__dirname, 'src'),
+        '@devices': path.resolve(__dirname, 'src/devices'),
         '@renderer': path.resolve(__dirname, 'src/renderer'),
         '@shared': path.resolve(__dirname, 'src/shared')
       }

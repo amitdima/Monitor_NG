@@ -1,36 +1,12 @@
-import { app, BrowserWindow, ipcMain, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, dialog } from 'electron';
 import * as path from 'path';
-
-// Временно закомментируем, пока не исправим
-// import { DeviceManager } from '../core/devices/DeviceManager';
+import { DeviceManager } from '../devices/DeviceManager';
+import { ProfileManager } from './services/ProfileManager';
 
 let mainWindow: BrowserWindow | null = null;
-// let deviceManager: DeviceManager;
-
-// Временный класс-заглушка
-class DeviceManager {
-  private devices = new Map();
-  
-  async addDevice(profile: any) {
-    this.devices.set(profile.id, profile);
-  }
-  
-  async removeDevice(deviceId: string) {
-    this.devices.delete(deviceId);
-  }
-  
-  async readDevice(deviceId: string) {
-    return { deviceId, data: {}, timestamp: new Date() };
-  }
-  
-  on(event: string, callback: Function) {
-    // Заглушка
-  }
-}
-
 let deviceManager: DeviceManager;
+let profileManager: ProfileManager;
 
-// Остальной код остаётся тем же...
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -56,6 +32,28 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   deviceManager = new DeviceManager();
+  profileManager = new ProfileManager();
+  
+  // Подписываемся на события от DeviceManager
+  deviceManager.on('device-data', (data) => {
+    mainWindow?.webContents.send('device-data', data);
+  });
+  
+  deviceManager.on('device-error', (error) => {
+    mainWindow?.webContents.send('device-error', error);
+  });
+  
+  deviceManager.on('device-status-changed', (status) => {
+    mainWindow?.webContents.send('device-status-changed', status);
+  });
+  
+  deviceManager.on('device-added', (device) => {
+    mainWindow?.webContents.send('device-added', device);
+  });
+  
+  deviceManager.on('device-removed', (deviceId) => {
+    mainWindow?.webContents.send('device-removed', deviceId);
+  });
   
   const menu = Menu.buildFromTemplate([
     {
@@ -155,5 +153,52 @@ ipcMain.handle('read-device-data', async (event, deviceId) => {
     return { success: true, data };
   } catch (error: any) {
     return { success: false, error: error.message };
+  }
+});
+
+// Обработчики для профилей
+ipcMain.handle('save-profile', async (event, profile) => {
+  try {
+    await profileManager.saveProfile(profile);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('load-profile', async (event, profileId) => {
+  try {
+    const profile = await profileManager.loadProfile(profileId);
+    return { success: true, profile };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-all-profiles', async () => {
+  try {
+    const profiles = await profileManager.getAllProfiles();
+    return { success: true, profiles };
+  } catch (error: any) {
+    return { success: false, error: error.message, profiles: [] };
+  }
+});
+
+ipcMain.handle('delete-profile', async (event, profileId) => {
+  try {
+    await profileManager.deleteProfile(profileId);
+    return { success: true };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+});
+
+// Обработчик для получения списка устройств
+ipcMain.handle('get-devices', async () => {
+  try {
+    const devices = deviceManager.getDevices();
+    return { success: true, devices };
+  } catch (error: any) {
+    return { success: false, error: error.message, devices: [] };
   }
 });

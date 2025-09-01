@@ -1,14 +1,17 @@
 import React from 'react';
-import ReactDOM from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import { ConfigProvider } from 'antd';
 import ruRU from 'antd/locale/ru_RU';
 import App from './App';
 import 'antd/dist/reset.css';
 import './styles/global.css';
 
-const root = ReactDOM.createRoot(
-  document.getElementById('root') as HTMLElement
-);
+const container = document.getElementById('root');
+if (!container) {
+  throw new Error('Root element not found');
+}
+
+const root = createRoot(container);
 
 root.render(
   <React.StrictMode>
