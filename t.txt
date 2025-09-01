@@ -1,0 +1,25 @@
+
+npm install electron
+npm install react react-dom
+npm install antd @ant-design/icons
+npm install modbus-serial
+npm install serialport
+npm install csv-writer
+npm install exceljs
+npm install electron-store
+npm install winston
+
+npm install --save-dev typescript
+npm install --save-dev webpack
+npm install --save-dev webpack-cli
+npm install --save-dev html-webpack-plugin
+npm install --save-dev ts-loader
+npm install --save-dev css-loader
+npm install --save-dev style-loader
+npm install --save-dev concurrently
+npm install --save-dev cross-env
+npm install --save-dev electron-builder
+
+npm install --save-dev @types/react
+npm install --save-dev @types/react-dom
+npm install --save-dev @types/node

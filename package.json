@@ -1,0 +1,69 @@
+{
+  "name": "multi-device-monitor",
+  "version": "1.0.0",
+  "description": "Multi-Device Monitor with Modbus support",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "webpack",
+    "start": "npm run build && electron .",
+    "dev": "concurrently \"webpack --watch\" \"cross-env NODE_ENV=development electron .\"",
+    "dist": "npm run build && electron-builder",
+    "dist-win": "npm run build && electron-builder --win",
+    "dist-linux": "npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.yourcompany.multidevicemonitor",
+    "productName": "Multi-Device Monitor",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    }
+  },
+  "keywords": [
+    "modbus",
+    "monitor",
+    "electron"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@ant-design/icons": "^6.0.0",
+    "antd": "^5.27.1",
+    "csv-writer": "^1.6.0",
+    "electron": "^37.3.1",
+    "electron-store": "^10.1.0",
+    "exceljs": "^4.4.0",
+    "modbus-serial": "^8.0.21-no-serial-port",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "serialport": "^13.0.0",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "concurrently": "^9.2.0",
+    "cross-env": "^10.0.0",
+    "css-loader": "^7.1.2",
+    "electron-builder": "^26.0.12",
+    "html-webpack-plugin": "^5.6.4",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.2",
+    "typescript": "^5.9.2",
+    "webpack": "^5.101.3",
+    "webpack-cli": "^6.0.1"
+  }
+}
