@@ -7,6 +7,8 @@ export interface IElectronAPI {
   disconnectDevice: (deviceId: string) => Promise<{ success: boolean; error?: string }>;
   readDeviceData: (deviceId: string) => Promise<{ success: boolean; data?: any; error?: string }>;
   getDevices: () => Promise<{ success: boolean; devices?: any[]; error?: string }>;
+  pauseDevice: (deviceId: string) => Promise<{ success: boolean; error?: string }>;
+  resumeDevice: (deviceId: string) => Promise<{ success: boolean; error?: string }>;
   
   // Профили
   saveProfile: (profile: any) => Promise<{ success: boolean; error?: string }>;

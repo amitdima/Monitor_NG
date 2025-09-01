@@ -158,7 +158,7 @@ export class DeviceManager extends EventEmitter {
     const deviceStatus = this.deviceStatuses.get(deviceId);
     
     if (modbusClient && deviceStatus) {
-      modbusClient.stopPolling();
+      modbusClient.stopPollingPublic();
       deviceStatus.status = 'disconnected';
       deviceStatus.lastUpdate = new Date();
       this.emit('device-status-changed', deviceStatus);
@@ -170,7 +170,7 @@ export class DeviceManager extends EventEmitter {
     const deviceStatus = this.deviceStatuses.get(deviceId);
     
     if (modbusClient && deviceStatus) {
-      modbusClient.startPolling();
+      modbusClient.startPollingPublic();
       deviceStatus.status = 'connected';
       deviceStatus.lastUpdate = new Date();
       this.emit('device-status-changed', deviceStatus);
