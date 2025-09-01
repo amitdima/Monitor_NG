@@ -10,7 +10,6 @@ import {
 // Импортируем компоненты и типы
 import { DeviceList, MonitorPanel, ProfileEditor, ArchiveSettings } from './components';
 import { Device } from '../shared/types';
-// Убираем импорт './types/electron' - он не нужен
 
 const { Header, Sider, Content } = Layout;
 
@@ -26,7 +25,7 @@ const App: React.FC = () => {
       });
 
       window.electronAPI.onDeviceError((error: any) => {
-        message.error(`Ошибка устройства: ${error.message}`);
+        message.error(`Ошибка устройства: ${error.message || error.error || 'Неизвестная ошибка'}`);
       });
 
       window.electronAPI.onMenuAction((action: string) => {
